@@ -13,3 +13,5 @@
 
 # Ignore the built binary
 cert-manager-webhook-example
+/cert-manager-webhook-huawei
+/_out/

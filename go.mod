@@ -1,4 +1,4 @@
-module github.com/jetstack/cert-manager-webhook-example
+module github.com/linakesi/cert-manager-webhook-huawei
 
 go 1.13
 
