@@ -15,3 +15,4 @@
 cert-manager-webhook-example
 /cert-manager-webhook-huawei
 /_out/
+/huawei/secret.go
