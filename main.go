@@ -4,13 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 
 	extapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
-	//"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/apis/acme/v1alpha1"
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/cmd"
+	"github.com/jetstack/cert-manager/pkg/issuer/acme/dns/util"
+	"github.com/linakesi/cert-manager-webhook-huawei/huawei"
 )
 
 var GroupName = os.Getenv("GROUP_NAME")
@@ -41,7 +44,9 @@ type customDNSProviderSolver struct {
 	// 3. uncomment the relevant code in the Initialize method below
 	// 4. ensure your webhook's service account has the required RBAC role
 	//    assigned to it for interacting with the Kubernetes APIs you need.
-	//client kubernetes.Clientset
+	k8sclient *kubernetes.Clientset
+
+	dnsClients sync.Map //domain:*huawei.HuaweiDNSClient
 }
 
 // customDNSProviderConfig is a structure that is used to decode into when
@@ -66,6 +71,9 @@ type customDNSProviderConfig struct {
 
 	//Email           string `json:"email"`
 	//APIKeySecretRef v1alpha1.SecretKeySelector `json:"apiKeySecretRef"`
+
+	AppKey    string
+	AppSecret string
 }
 
 // Name is used as the name for this DNS solver when referencing it on the ACME
@@ -75,7 +83,7 @@ type customDNSProviderConfig struct {
 // within a single webhook deployment**.
 // For example, `cloudflare` may be used as the name of a solver.
 func (c *customDNSProviderSolver) Name() string {
-	return "my-custom-solver"
+	return "lnks-huawei-dns"
 }
 
 // Present is responsible for actually presenting the DNS record with the
@@ -89,11 +97,31 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 		return err
 	}
 
-	// TODO: do something more useful with the decoded configuration
-	fmt.Printf("Decoded configuration %v", cfg)
+	fmt.Printf("fqdn:[%s] zone:[%s]\n", ch.ResolvedFQDN, ch.ResolvedZone)
+	domainName := c.extractDomainName(ch.ResolvedZone)
 
-	// TODO: add code that sets a record in the DNS provider's console
-	return nil
+	dc, err := c.dnsClient(domainName, cfg)
+	if err != nil {
+		return err
+	}
+	return dc.AddDomainRecord(
+		ch.ResolvedFQDN,
+		"TXT",
+		ch.Key,
+	)
+}
+
+func (c *customDNSProviderSolver) dnsClient(domain string, cfg customDNSProviderConfig) (*huawei.HuaweiDNSClient, error) {
+	v, ok := c.dnsClients.Load(domain)
+	if ok {
+		return v.(*huawei.HuaweiDNSClient), nil
+	}
+	client, err := huawei.NewHuaweiDNSClient(cfg.AppKey, cfg.AppSecret, domain)
+	if err != nil {
+		return nil, err
+	}
+	c.dnsClients.Store(domain, client)
+	return client, nil
 }
 
 // CleanUp should delete the relevant TXT record from the DNS provider console.
@@ -103,8 +131,25 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 // This is in order to facilitate multiple DNS validations for the same domain
 // concurrently.
 func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
-	// TODO: add code that deletes a record from the DNS provider's console
-	return nil
+	cfg, err := loadConfig(ch.Config)
+	if err != nil {
+		return err
+	}
+
+	dc, err := c.dnsClient(ch.ResolvedZone, cfg)
+	if err != nil {
+		return err
+	}
+
+	return dc.DeleteDomainRecord(ch.ResolvedFQDN, "TXT")
+}
+
+func (c *customDNSProviderSolver) extractDomainName(zone string) string {
+	authZone, err := util.FindZoneByFqdn(zone, util.RecursiveNameservers)
+	if err != nil {
+		return zone
+	}
+	return util.UnFqdn(authZone)
 }
 
 // Initialize will be called when the webhook first starts.
@@ -117,17 +162,12 @@ func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 // The stopCh can be used to handle early termination of the webhook, in cases
 // where a SIGTERM or similar signal is sent to the webhook process.
 func (c *customDNSProviderSolver) Initialize(kubeClientConfig *rest.Config, stopCh <-chan struct{}) error {
-	///// UNCOMMENT THE BELOW CODE TO MAKE A KUBERNETES CLIENTSET AVAILABLE TO
-	///// YOUR CUSTOM DNS PROVIDER
+	cl, err := kubernetes.NewForConfig(kubeClientConfig)
+	if err != nil {
+		return err
+	}
 
-	//cl, err := kubernetes.NewForConfig(kubeClientConfig)
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//c.client = cl
-
-	///// END OF CODE TO MAKE KUBERNETES CLIENTSET AVAILABLE
+	c.k8sclient = cl
 	return nil
 }
 

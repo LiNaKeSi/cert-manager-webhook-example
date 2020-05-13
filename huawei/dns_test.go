@@ -1,17 +1,34 @@
 package huawei
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 )
 
-// const (
-// 	appKey    = "app key"
-// 	appSecret = "app secret"
-// 	appDomain = "linakesi.com"
-// )
+type TestConfig struct {
+	AppKey    string
+	AppSecret string
+}
+
+const AppDomain = "linakesi.com"
+
+var cfg TestConfig
+
+func init() {
+	f, err := os.Open("../testdata/my-custom-solver/config.json")
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	err = json.NewDecoder(f).Decode(&cfg)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func TestPing(t *testing.T) {
-	c, err := NewHuaweiDNSClient(appKey, appSecret, appDomain)
+	c, err := NewHuaweiDNSClient(cfg.AppKey, cfg.AppSecret, appDomain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +42,7 @@ func TestPing(t *testing.T) {
 }
 
 func TestAddDel(t *testing.T) {
-	c, err := NewHuaweiDNSClient(appKey, appSecret, appDomain)
+	c, err := NewHuaweiDNSClient(cfg.AppKey, cfg.AppSecret, appDomain)
 	if err != nil {
 		t.Fatal(err)
 	}
