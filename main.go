@@ -13,7 +13,7 @@ import (
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/apis/acme/v1alpha1"
 	"github.com/jetstack/cert-manager/pkg/acme/webhook/cmd"
 	"github.com/jetstack/cert-manager/pkg/issuer/acme/dns/util"
-	"github.com/linakesi/cert-manager-webhook-huawei/huawei"
+	"github.com/linakesi/huaweidns"
 )
 
 var GroupName = os.Getenv("GROUP_NAME")
@@ -46,7 +46,7 @@ type customDNSProviderSolver struct {
 	//    assigned to it for interacting with the Kubernetes APIs you need.
 	k8sclient *kubernetes.Clientset
 
-	dnsClients sync.Map //domain:*huawei.HuaweiDNSClient
+	dnsClients sync.Map //domain:*huaweidns.HuaweiDNSClient
 }
 
 // customDNSProviderConfig is a structure that is used to decode into when
@@ -111,12 +111,12 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 	)
 }
 
-func (c *customDNSProviderSolver) dnsClient(domain string, cfg customDNSProviderConfig) (*huawei.HuaweiDNSClient, error) {
+func (c *customDNSProviderSolver) dnsClient(domain string, cfg customDNSProviderConfig) (*huaweidns.HuaweiDNSClient, error) {
 	v, ok := c.dnsClients.Load(domain)
 	if ok {
-		return v.(*huawei.HuaweiDNSClient), nil
+		return v.(*huaweidns.HuaweiDNSClient), nil
 	}
-	client, err := huawei.NewHuaweiDNSClient(cfg.AppKey, cfg.AppSecret, domain)
+	client, err := huaweidns.NewHuaweiDNSClient(cfg.AppKey, cfg.AppSecret, domain)
 	if err != nil {
 		return nil, err
 	}
